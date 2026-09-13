@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Secure Cloud Drive</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-50 text-gray-800 font-sans min-h-screen flex flex-col justify-center items-center p-4">
+
+  <!-- Auth Card -->
+  <div id="authContainer" class="w-full max-w-md bg-white p-8 rounded-xl shadow-md border border-gray-100 text-center">
+    <div class="text-4xl mb-3">📁</div>
+    <h2 class="text-2xl font-bold text-gray-800 mb-2">Cloud Drive</h2>
+    <p class="text-sm text-gray-500 mb-6">Sign in to access your personal files</p>
+    
+    <button id="googleLoginBtn" class="w-full flex items-center justify-center gap-3 bg-white hover:bg-gray-50 text-gray-700 font-medium py-3 border border-gray-300 rounded-lg shadow-sm transition">
+      <svg class="w-5 h-5" viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
+      </svg>
+      Continue with Google
+    </button>
+    <p id="authError" class="text-red-500 text-xs text-center hidden mt-4"></p>
+  </div>
+
+  <!-- Drive Interface -->
+  <div id="driveContainer" class="hidden w-full max-w-4xl bg-white p-6 rounded-xl shadow-md border border-gray-100">
+    <div class="flex justify-between items-center pb-6 border-b border-gray-200">
+      <div class="flex items-center space-x-3">
+        <img id="userPhoto" class="w-10 h-10 rounded-full border" src="" alt="Profile">
+        <div>
+          <h1 id="userName" class="text-lg font-bold text-gray-800"></h1>
+          <p id="userEmail" class="text-xs text-gray-500"></p>
+        </div>
+      </div>
+      <div class="flex gap-3">
+        <label class="cursor-pointer bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg shadow transition">
+          <span>+ Upload File</span>
+          <input type="file" id="fileInput" class="hidden" />
+        </label>
+        <button id="logoutBtn" class="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium px-4 py-2 rounded-lg transition">Logout</button>
+      </div>
+    </div>
+
+    <div id="status" class="hidden mt-4 p-3 rounded-lg text-sm bg-blue-50 text-blue-700"></div>
+    <div id="fileGrid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-6"></div>
+  </div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+    import { getStorage, ref, uploadBytesResumable, getDownloadURL, listAll } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js";
+
+    // Your configured Firebase project details
+    const firebaseConfig = {
+      apiKey: "AIzaSyA-1rQlbuVPtq79T_eLpJIuNyE2MaKeY-E",
+      authDomain: "project-iron-demon.firebaseapp.com",
+      projectId: "project-iron-demon",
+      storageBucket: "project-iron-demon.firebasestorage.app",
+      messagingSenderId: "913622258843",
+      appId: "1:913622258843:web:9902fa32b7de4f890c623e",
+      measurementId: "G-KGZM70MHSK"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const storage = getStorage(app);
+    const googleProvider = new GoogleAuthProvider();
+
+    // DOM Elements
+    const authContainer = document.getElementById("authContainer");
+    const driveContainer = document.getElementById("driveContainer");
+    const googleLoginBtn = document.getElementById("googleLoginBtn");
+    const authError = document.getElementById("authError");
+    const userName = document.getElementById("userName");
+    const userEmail = document.getElementById("userEmail");
+    const userPhoto = document.getElementById("userPhoto");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const fileInput = document.getElementById("fileInput");
+    const statusDiv = document.getElementById("status");
+    const fileGrid = document.getElementById("fileGrid");
+
+    // Google Sign-In Trigger
+    googleLoginBtn.addEventListener("click", async () => {
+      authError.classList.add("hidden");
+      try {
+        await signInWithPopup(auth, googleProvider);
+      } catch (err) {
+        authError.innerText = err.message;
+        authError.classList.remove("hidden");
+      }
+    });
+
+    // Monitor Auth Status
+    onAuthStateChanged(auth, (user) => {
+      if (user) {
+        authContainer.classList.add("hidden");
+        driveContainer.classList.remove("hidden");
+        userName.innerText = user.displayName || "User Drive";
+        userEmail.innerText = user.email;
+        userPhoto.src = user.photoURL || "https://via.placeholder.com/40";
+        loadFiles();
+      } else {
+        authContainer.classList.remove("hidden");
+        driveContainer.classList.add("hidden");
+      }
+    });
+
+    // Logout
+    logoutBtn.addEventListener("click", () => signOut(auth));
+
+    // File Upload
+    fileInput.addEventListener("change", (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const storageRef = ref(storage, 'uploads/' + file.name);
+      const uploadTask = uploadBytesResumable(storageRef, file);
+
+      statusDiv.classList.remove("hidden");
+      statusDiv.innerText = `Uploading ${file.name}...`;
+
+      uploadTask.on("state_changed", 
+        (snapshot) => {
+          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
+          statusDiv.innerText = `Uploading: ${progress}%`;
+        }, 
+        (error) => { statusDiv.innerText = `Upload failed: ${error.message}`; }, 
+        () => {
+          statusDiv.innerText = `Upload complete!`;
+          setTimeout(() => statusDiv.classList.add("hidden"), 3000);
+          loadFiles();
+        }
+      );
+    });
+
+    // Fetch Files
+    async function loadFiles() {
+      fileGrid.innerHTML = "";
+      const listRef = ref(storage, 'uploads/');
+      try {
+        const res = await listAll(listRef);
+        if (res.items.length === 0) {
+          fileGrid.innerHTML = `<p class="text-gray-400 col-span-3 text-center py-6">No files uploaded yet.</p>`;
+          return;
+        }
+
+        for (const itemRef of res.items) {
+          const url = await getDownloadURL(itemRef);
+          const card = document.createElement("div");
+          card.className = "border border-gray-200 p-4 rounded-lg bg-gray-50 flex justify-between items-center";
+          card.innerHTML = `
+            <p class="font-medium text-sm text-gray-800 truncate mr-2">${itemRef.name}</p>
+            <a href="${url}" target="_blank" download class="text-blue-600 font-medium text-sm">Download</a>
+          `;
+          fileGrid.appendChild(card);
+        }
+      } catch (err) {
+        console.error("Error loading files: ", err);
+      }
+    }
+  </script>
+</body>
+</html>
